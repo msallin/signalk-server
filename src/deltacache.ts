@@ -68,9 +68,12 @@ export default class DeltaCache {
       return result
     }
 
-    let contextAndPathParts = msg.context.split('.')
+    const contextAndPathParts = msg.context.split('.')
     if (msg.path.length !== 0) {
-      contextAndPathParts = contextAndPathParts.concat(msg.path.split('.'))
+      const pathParts = msg.path.split('.')
+      for (let i = 0; i < pathParts.length; i++) {
+        contextAndPathParts.push(pathParts[i])
+      }
     }
     if (!this.cachedContextPaths[msg.context]) {
       this.cachedContextPaths[msg.context] = {}
@@ -96,13 +99,13 @@ export default class DeltaCache {
 
     if (msg.path.length !== 0) {
       leaf[sourceRef] = msg
-    } else if (msg.value) {
-      _.keys(msg.value).forEach((key) => {
+    } else if (msg.value && typeof msg.value === 'object') {
+      for (const key in msg.value as object) {
         if (!leaf[key]) {
           leaf[key] = {}
         }
         leaf[key][sourceRef] = msg
-      })
+      }
     }
     this.lastModifieds[msg.context] = Date.now()
   }
@@ -218,9 +221,10 @@ export default class DeltaCache {
     )
 
     deltas.sort((left, right) => {
-      return (
-        new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime()
-      )
+      // ISO-8601 timestamps are lexically sortable, avoiding a Date
+      // allocation per comparison.
+      if (left.timestamp === right.timestamp) return 0
+      return left.timestamp < right.timestamp ? -1 : 1
     })
 
     return deltas.map(toDelta).filter((delta) => {
