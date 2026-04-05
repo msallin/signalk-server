@@ -309,41 +309,54 @@ class Server {
         ) {
           data.context = ('vessels.' + app.selfId) as Context
         }
-        const now = new Date()
-        data.updates = data.updates
-          .map((update: Partial<Update>) => {
-            if (typeof update.source !== 'undefined') {
-              update.source.label = providerId
-              if (!update.$source) {
-                update.$source = getSourceId(update.source)
-              }
-            } else {
-              if (typeof update.$source === 'undefined') {
-                update.$source = providerId as SourceRef
-              }
+        let now: Date | undefined
+        let nowIso: Timestamp | undefined
+        const overrideTimestamp = app.config.overrideTimestampWithNow
+        const updates = data.updates
+        let writeIdx = 0
+        for (let i = 0; i < updates.length; i++) {
+          const update = updates[i] as Partial<Update>
+          if (typeof update.source !== 'undefined') {
+            update.source.label = providerId
+            if (!update.$source) {
+              update.$source = getSourceId(update.source)
             }
-            if (!update.timestamp || app.config.overrideTimestampWithNow) {
-              update.timestamp = now.toISOString() as Timestamp
+          } else {
+            if (typeof update.$source === 'undefined') {
+              update.$source = providerId as SourceRef
             }
+          }
+          if (!update.timestamp || overrideTimestamp) {
+            if (nowIso === undefined) {
+              now = new Date()
+              nowIso = now.toISOString() as Timestamp
+            }
+            update.timestamp = nowIso
+          }
 
-            if ('values' in update && !Array.isArray(update.values)) {
-              debug(`handleMessage: ignoring invalid values`, update.values)
-              delete update.values
-            }
+          if ('values' in update && !Array.isArray(update.values)) {
+            debug(`handleMessage: ignoring invalid values`, update.values)
+            delete update.values
+          }
 
-            if ('meta' in update && !Array.isArray(update.meta)) {
-              debug(`handleMessage: ignoring invalid meta`, update.meta)
-              delete update.meta
-            }
+          if ('meta' in update && !Array.isArray(update.meta)) {
+            debug(`handleMessage: ignoring invalid meta`, update.meta)
+            delete update.meta
+          }
 
-            if ('values' in update || 'meta' in update) {
-              return update as Update
-            }
-          })
-          .filter((update) => update !== undefined)
+          if ('values' in update || 'meta' in update) {
+            updates[writeIdx++] = update as Update
+          }
+        }
+        if (writeIdx !== updates.length) {
+          updates.length = writeIdx
+        }
 
         // No valid updates, discarding
-        if (data.updates.length < 1) return
+        if (updates.length < 1) return
+        if (now === undefined) {
+          now = new Date()
+        }
 
         try {
           let delta = filterStaticSelfData(data, app.selfContext)
