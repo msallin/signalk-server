@@ -29,7 +29,7 @@ import {
 } from '@signalk/server-api'
 import * as Bacon from 'baconjs'
 import { isPointWithinRadius } from 'geolib'
-import _, { forOwn, get, isString } from 'lodash'
+import { get, isString } from 'lodash'
 import { createDebug } from './debug'
 import DeltaCache from './deltacache'
 import { StreamBundle, toDelta } from './streambundle'
@@ -211,7 +211,8 @@ function handleSubscribeRow(
 ) {
   const matcher = pathMatcher(subscribeRow.path)
   // iterate over all the buses, checking if we want to subscribe to its values
-  forOwn(buses, (bus, key) => {
+  for (const key in buses) {
+    const bus = buses[key as Path]
     if (matcher(key)) {
       debug('Subscribing to key ' + key)
       let filteredBus: Bacon.EventStream<NormalizedDelta> = bus.filter(filter)
@@ -246,13 +247,19 @@ function handleSubscribeRow(
           filteredBus = filteredBus
             .bufferWithTime(interval)
             .flatMapLatest((bufferedValues: any) => {
-              const uniqueValues = _(bufferedValues)
-                .reverse()
-                .uniqBy(
-                  (value) =>
-                    value.context + ':' + value.$source + ':' + value.path
-                )
-                .value()
+              // Dedupe keeping the latest value per context:$source:path,
+              // walking the buffer from newest to oldest.
+              const seen = new Set<string>()
+              const uniqueValues = []
+              for (let i = bufferedValues.length - 1; i >= 0; i--) {
+                const value = bufferedValues[i]
+                const key =
+                  value.context + ':' + value.$source + ':' + value.path
+                if (!seen.has(key)) {
+                  seen.add(key)
+                  uniqueValues.push(value)
+                }
+              }
               return Bacon.fromArray(uniqueValues)
             })
         }
@@ -275,7 +282,7 @@ function handleSubscribeRow(
         latest.forEach(callback)
       }
     }
-  })
+  }
 }
 
 function pathMatcher(path: string = '*') {
