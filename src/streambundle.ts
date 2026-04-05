@@ -54,37 +54,46 @@ export class StreamBundle implements IStreamBundle {
 
   pushDelta(delta: Delta) {
     try {
-      if (delta.updates) {
-        delta.updates.forEach((update) => {
-          const base = {
-            context: delta.context!, // TSTODO: make optional/required match
-            source: update.source,
-            $source: update.$source!, // TSTODO: make optional/required match
-            timestamp: update.timestamp! // TSTODO: make optional/required match
-          }
+      if (!delta.updates) return
+      const context = delta.context! // TSTODO: make optional/required match
+      const updates = delta.updates
+      for (let i = 0; i < updates.length; i++) {
+        const update = updates[i]
+        const source = update.source
+        const $source = update.$source! // TSTODO: make optional/required match
+        const timestamp = update.timestamp! // TSTODO: make optional/required match
 
-          if ('meta' in update) {
-            update.meta.forEach((meta) => {
-              this.push(meta.path, {
-                ...base,
-                path: meta.path,
-                value: meta.value,
-                isMeta: true
-              })
+        if ('meta' in update) {
+          const metas = update.meta
+          for (let m = 0; m < metas.length; m++) {
+            const meta = metas[m]
+            this.push(meta.path, {
+              context,
+              source,
+              $source,
+              timestamp,
+              path: meta.path,
+              value: meta.value,
+              isMeta: true
             })
           }
+        }
 
-          if ('values' in update) {
-            update.values.forEach((pathValue) => {
-              this.push(pathValue.path, {
-                ...base,
-                path: pathValue.path,
-                value: pathValue.value,
-                isMeta: false
-              })
+        if ('values' in update) {
+          const values = update.values
+          for (let v = 0; v < values.length; v++) {
+            const pathValue = values[v]
+            this.push(pathValue.path, {
+              context,
+              source,
+              $source,
+              timestamp,
+              path: pathValue.path,
+              value: pathValue.value,
+              isMeta: false
             })
           }
-        })
+        }
       }
     } catch (e) {
       console.error(e)
@@ -92,7 +101,7 @@ export class StreamBundle implements IStreamBundle {
   }
 
   push(path: Path, normalizedDelta: NormalizedDelta) {
-    const { isMeta } = normalizedDelta
+    const isMeta = normalizedDelta.isMeta
     const isSelf = normalizedDelta.context === this.selfContext
     if (isMeta) {
       this.metaBus.push(normalizedDelta)
@@ -103,14 +112,27 @@ export class StreamBundle implements IStreamBundle {
     if (!this.availableSelfPaths[path]) {
       this.availableSelfPaths[path] = true
     }
-    this.getBus().push(normalizedDelta)
-    this.getBus(path).push(normalizedDelta)
+    this.allPathsBus.push(normalizedDelta)
+    let pathBus = this.buses[path]
+    if (!pathBus) {
+      pathBus = this.buses[path] = new Bacon.Bus()
+      this.keys.push(path)
+    }
+    pathBus.push(normalizedDelta)
     if (isSelf) {
-      this.getSelfBus().push(normalizedDelta)
-      this.getSelfBus(path).push(normalizedDelta)
+      this.selfAllPathsBus.push(normalizedDelta)
+      let selfPathBus = this.selfBuses[path]
+      if (!selfPathBus) {
+        selfPathBus = this.selfBuses[path] = new Bacon.Bus()
+      }
+      selfPathBus.push(normalizedDelta)
       if (!isMeta) {
-        this.getSelfStream().push(normalizedDelta.value)
-        this.getSelfStream(path).push(normalizedDelta.value)
+        this.selfAllPathsStream.push(normalizedDelta.value)
+        let selfPathStream = this.selfStreams[path]
+        if (!selfPathStream) {
+          selfPathStream = this.selfStreams[path] = new Bacon.Bus()
+        }
+        selfPathStream.push(normalizedDelta.value)
       }
     }
   }
