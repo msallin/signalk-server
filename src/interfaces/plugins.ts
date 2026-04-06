@@ -47,6 +47,7 @@ import path from 'path'
 import { AutopilotApi } from '../api/autopilot'
 import { CourseApi } from '../api/course'
 import { ResourcesApi } from '../api/resources'
+import { AsyncMutex } from '../atomicWrite'
 import { SERVERROUTESPREFIX } from '../constants'
 import { createDebug } from '../debug'
 import {
@@ -109,6 +110,17 @@ function backwardsCompat(url: string) {
 
 module.exports = (theApp: any) => {
   const onStopHandlers: any = {}
+  const pluginRestartMutexes = new Map<string, AsyncMutex>()
+
+  function getPluginMutex(pluginId: string): AsyncMutex {
+    let mutex = pluginRestartMutexes.get(pluginId)
+    if (!mutex) {
+      mutex = new AsyncMutex()
+      pluginRestartMutexes.set(pluginId, mutex)
+    }
+    return mutex
+  }
+
   return {
     async start() {
       ensureExists(path.join(theApp.config.configPath, PLUGIN_CONFIG_DATA_DIR))
@@ -852,7 +864,8 @@ module.exports = (theApp: any) => {
           return
         }
         res.json('Saved configuration for plugin ' + plugin.id)
-        stopPlugin(plugin).then(() => {
+        getPluginMutex(plugin.id).run(async () => {
+          await stopPlugin(plugin)
           const options = getPluginOptions(plugin.id)
           plugin.enableLogging = options.enableLogging
           plugin.enableDebug = options.enableDebug

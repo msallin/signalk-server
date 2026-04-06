@@ -25,7 +25,7 @@ import {
   statSync,
   writeFileSync
 } from 'fs'
-import { atomicWriteFile } from './atomicWrite'
+import { AsyncMutex, atomicWriteFile } from './atomicWrite'
 import _ from 'lodash'
 import path from 'path'
 import { generate } from 'selfsigned'
@@ -308,6 +308,8 @@ export function pathForSecurityConfig(app: WithConfig) {
   return path.join(app.config.configPath, 'security.json')
 }
 
+const securityConfigMutex = new AsyncMutex()
+
 export function saveSecurityConfig(
   app: WithSecurityStrategy & WithConfig,
   data: any,
@@ -332,6 +334,41 @@ export function saveSecurityConfig(
           callback(err)
         }
       })
+  }
+}
+
+/**
+ * Serialize a read-modify-write cycle on security.json. The mutator receives
+ * the current config and must return the modified config to save (or
+ * undefined/void to skip the write). All callers are queued so that only one
+ * read-modify-write executes at a time, preventing lost updates from
+ * concurrent admin requests.
+ */
+export function withSecurityConfig(
+  app: WithSecurityStrategy & WithConfig,
+  mutator: (
+    config: SecurityConfig
+  ) => Promise<SecurityConfig | undefined | void>
+): Promise<void> {
+  return securityConfigMutex.run(async () => {
+    const config = getSecurityConfig(app)
+    const result = await mutator(config)
+    if (result !== undefined) {
+      await saveSecurityConfigAsync(app, result)
+    }
+  })
+}
+
+async function saveSecurityConfigAsync(
+  app: WithSecurityStrategy & WithConfig,
+  data: any
+): Promise<void> {
+  if (app.securityStrategy.configFromArguments) {
+    app.securityStrategy.securityConfig = data
+  } else {
+    const configPath = pathForSecurityConfig(app)
+    await atomicWriteFile(configPath, JSON.stringify(data, null, 2))
+    chmodSync(configPath, '600')
   }
 }
 

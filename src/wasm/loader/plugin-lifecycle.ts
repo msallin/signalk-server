@@ -31,6 +31,31 @@ const deltaUnsubscribers: Map<string, () => void> = new Map()
 // as-fetch uses global state that gets corrupted with parallel plugin starts
 let networkPluginStartMutex: Promise<void> = Promise.resolve()
 
+const MUTEX_TIMEOUT_MS = 30_000
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label}: timed out after ${ms}ms`)),
+      ms
+    )
+    promise.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(timer)
+        reject(e)
+      }
+    )
+  })
+}
+
 /**
  * Start a WASM plugin
  */
@@ -56,7 +81,11 @@ export async function startWasmPlugin(
     networkPluginStartMutex = new Promise((resolve) => {
       releaseMutex = resolve
     })
-    await previousMutex
+    await withTimeout(
+      previousMutex,
+      MUTEX_TIMEOUT_MS,
+      `WASM mutex wait for ${pluginId}`
+    )
     debug(`Plugin ${pluginId} acquired start mutex`)
     try {
       await startWasmPluginInternal(app, plugin, pluginId)

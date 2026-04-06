@@ -53,7 +53,8 @@ import {
   SecurityConfigSaver,
   SecurityStrategy,
   User,
-  WithSecurityStrategy
+  WithSecurityStrategy,
+  withSecurityConfig
 } from './security'
 import { listAllSerialPorts } from './serialports'
 import { StreamBundle } from './streambundle'
@@ -370,45 +371,20 @@ module.exports = function (
           return
         }
 
-        let config = getSecurityConfig(app)
-        const configToSave = handleAdminUICORSOrigin(req.body)
-        config = app.securityStrategy.setConfig(config, configToSave)
-        saveSecurityConfig(app, config, (err) => {
-          if (err) {
-            console.log(err)
-            res.status(500)
-            res.json('Unable to save configuration change')
-            return
-          }
-          res.json('security config saved')
+        withSecurityConfig(app, async (config) => {
+          const configToSave = handleAdminUICORSOrigin(req.body)
+          return app.securityStrategy.setConfig(config, configToSave)
         })
+          .then(() => res.json('security config saved'))
+          .catch((err) => {
+            console.log(err)
+            res.status(500).json('Unable to save configuration change')
+          })
       } else {
         res.status(401).send('Security config not allowed')
       }
     }
   )
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function getConfigSavingCallback(success: any, failure: any, res: Response) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (err: any, config: any) => {
-      if (err) {
-        console.log(err)
-        res.status(500).type('text/plain').send(failure)
-      } else if (config) {
-        saveSecurityConfig(app, config, (theError) => {
-          if (theError) {
-            console.log(theError)
-            res.status(500).send('Unable to save configuration change')
-            return
-          }
-          res.type('text/plain').send(success)
-        })
-      } else {
-        res.type('text/plain').send(success)
-      }
-    }
-  }
 
   function checkAllowConfigure(req: Request, res: Response) {
     if (app.securityStrategy.allowConfigure(req)) {
@@ -433,17 +409,23 @@ module.exports = function (
     `${SERVERROUTESPREFIX}/security/devices/:uuid`,
     (req: Request, res: Response) => {
       if (checkAllowConfigure(req, res)) {
-        const config = getSecurityConfig(app)
-        app.securityStrategy.updateDevice(
-          config,
-          req.params.uuid,
-          req.body,
-          getConfigSavingCallback(
-            'Device updated',
-            'Unable to update device',
-            res
-          )
+        withSecurityConfig(
+          app,
+          (config) =>
+            new Promise((resolve, reject) => {
+              app.securityStrategy.updateDevice(
+                config,
+                req.params.uuid,
+                req.body,
+                (err, result) => (err ? reject(err) : resolve(result))
+              )
+            })
         )
+          .then(() => res.type('text/plain').send('Device updated'))
+          .catch((err) => {
+            console.log(err)
+            res.status(500).type('text/plain').send('Unable to update device')
+          })
       }
     }
   )
@@ -452,16 +434,22 @@ module.exports = function (
     `${SERVERROUTESPREFIX}/security/devices/:uuid`,
     (req: Request, res: Response) => {
       if (checkAllowConfigure(req, res)) {
-        const config = getSecurityConfig(app)
-        app.securityStrategy.deleteDevice(
-          config,
-          req.params.uuid,
-          getConfigSavingCallback(
-            'Device deleted',
-            'Unable to delete device',
-            res
-          )
+        withSecurityConfig(
+          app,
+          (config) =>
+            new Promise((resolve, reject) => {
+              app.securityStrategy.deleteDevice(
+                config,
+                req.params.uuid,
+                (err, result) => (err ? reject(err) : resolve(result))
+              )
+            })
         )
+          .then(() => res.type('text/plain').send('Device deleted'))
+          .catch((err) => {
+            console.log(err)
+            res.status(500).type('text/plain').send('Unable to delete device')
+          })
       }
     }
   )
@@ -480,13 +468,23 @@ module.exports = function (
     `${SERVERROUTESPREFIX}/security/users/:id`,
     (req: Request, res: Response) => {
       if (checkAllowConfigure(req, res)) {
-        const config = getSecurityConfig(app)
-        app.securityStrategy.updateUser(
-          config,
-          req.params.id,
-          req.body,
-          getConfigSavingCallback('User updated', 'Unable to add user', res)
+        withSecurityConfig(
+          app,
+          (config) =>
+            new Promise((resolve, reject) => {
+              app.securityStrategy.updateUser(
+                config,
+                req.params.id,
+                req.body,
+                (err, result) => (err ? reject(err) : resolve(result))
+              )
+            })
         )
+          .then(() => res.type('text/plain').send('User updated'))
+          .catch((err) => {
+            console.log(err)
+            res.status(500).type('text/plain').send('Unable to update user')
+          })
       }
     }
   )
@@ -495,26 +493,23 @@ module.exports = function (
     `${SERVERROUTESPREFIX}/security/users/:id`,
     (req: Request, res: Response) => {
       if (checkAllowConfigure(req, res)) {
-        const config = getSecurityConfig(app)
         const user = req.body
         user.userId = req.params.id
-        app.securityStrategy.addUser(config, user, (err, savedConfig) => {
-          if (err) {
+        withSecurityConfig(
+          app,
+          (config) =>
+            new Promise((resolve, reject) => {
+              app.securityStrategy.addUser(config, user, (err, result) => {
+                if (err) reject(err)
+                else resolve(result)
+              })
+            })
+        )
+          .then(() => res.type('text/plain').send('User added'))
+          .catch((err) => {
             const status = err.message === 'User already exists' ? 400 : 500
             res.status(status).type('text/plain').send(err.message)
-          } else if (savedConfig) {
-            saveSecurityConfig(app, savedConfig, (saveErr) => {
-              if (saveErr) {
-                console.log(saveErr)
-                res.status(500).send('Unable to save configuration change')
-                return
-              }
-              res.type('text/plain').send('User added')
-            })
-          } else {
-            res.status(500).type('text/plain').send('Unable to add user')
-          }
-        })
+          })
       }
     }
   )
@@ -523,17 +518,23 @@ module.exports = function (
     `${SERVERROUTESPREFIX}/security/user/:username/password`,
     (req: Request, res: Response) => {
       if (checkAllowConfigure(req, res)) {
-        const config = getSecurityConfig(app)
-        app.securityStrategy.setPassword(
-          config,
-          req.params.username,
-          req.body,
-          getConfigSavingCallback(
-            'Password changed',
-            'Unable to change password',
-            res
-          )
+        withSecurityConfig(
+          app,
+          (config) =>
+            new Promise((resolve, reject) => {
+              app.securityStrategy.setPassword(
+                config,
+                req.params.username,
+                req.body,
+                (err, result) => (err ? reject(err) : resolve(result))
+              )
+            })
         )
+          .then(() => res.type('text/plain').send('Password changed'))
+          .catch((err) => {
+            console.log(err)
+            res.status(500).type('text/plain').send('Unable to change password')
+          })
       }
     }
   )
@@ -542,12 +543,22 @@ module.exports = function (
     `${SERVERROUTESPREFIX}/security/users/:username`,
     (req: Request, res: Response) => {
       if (checkAllowConfigure(req, res)) {
-        const config = getSecurityConfig(app)
-        app.securityStrategy.deleteUser(
-          config,
-          req.params.username,
-          getConfigSavingCallback('User deleted', 'Unable to delete user', res)
+        withSecurityConfig(
+          app,
+          (config) =>
+            new Promise((resolve, reject) => {
+              app.securityStrategy.deleteUser(
+                config,
+                req.params.username,
+                (err, result) => (err ? reject(err) : resolve(result))
+              )
+            })
         )
+          .then(() => res.type('text/plain').send('User deleted'))
+          .catch((err) => {
+            console.log(err)
+            res.status(500).type('text/plain').send('Unable to delete user')
+          })
       }
     }
   )
@@ -566,18 +577,24 @@ module.exports = function (
         return
       }
       if (checkAllowConfigure(req, res)) {
-        const config = getSecurityConfig(app)
-        app.securityStrategy.setAccessRequestStatus(
-          config,
-          req.params.identifier,
-          req.params.status,
-          req.body,
-          getConfigSavingCallback(
-            'Request updated',
-            'Unable update request',
-            res
-          )
+        withSecurityConfig(
+          app,
+          (config) =>
+            new Promise((resolve, reject) => {
+              app.securityStrategy.setAccessRequestStatus(
+                config,
+                req.params.identifier,
+                req.params.status,
+                req.body,
+                (err, result) => (err ? reject(err) : resolve(result))
+              )
+            })
         )
+          .then(() => res.type('text/plain').send('Request updated'))
+          .catch((err) => {
+            console.log(err)
+            res.status(500).type('text/plain').send('Unable update request')
+          })
       }
     }
   )
