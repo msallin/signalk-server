@@ -43,6 +43,29 @@ Do not add error handling, fallbacks, or validation for scenarios that cannot ha
 - Unit tests for business logic; integration tests for boundaries
 - Aim for meaningful coverage, not arbitrary percentages
 
+## Performance
+
+Signal K Server typically runs on low-power hardware (Raspberry Pi 3-5) and battery-backed marine installations. CPU cycles cost watts, and watts come from a finite bank. Treat the delta ingestion and fanout path as latency- and allocation-sensitive.
+
+### Hot paths
+
+Assume 100+ deltas/second and 20+ concurrent WebSocket clients as the working scenario when reasoning about cost. The following run on that hot path:
+
+- `src/streambundle.ts` — `pushDelta` / `push`, per incoming value
+- `src/subscriptionmanager.ts` — subscriber callbacks, per delta per subscribed client
+- `src/interfaces/ws.ts` — `onChange` and the `data` handler, per client and per inbound message
+- `src/BackpressureManager.ts` — `send`, per delta per client
+- `src/deltacache.ts` — `onValue`, per delta
+- `src/interfaces/rest.js` — tree traversal, per HTTP request
+
+### Rules
+
+- **Guard eager work in `debug()` calls.** Function arguments are evaluated before the call, so `debug('x=' + JSON.stringify(obj))` serializes on every invocation even when the namespace is off. Wrap with `debug.enabled &&` (see `src/interfaces/tcp.ts:169` for the pattern) whenever the argument involves `JSON.stringify`, template-literal serialization, or other non-trivial work.
+- **Avoid allocations on the per-delta path.** Do not spread objects inside inner loops. Do not `reduce` into a new array when nothing was actually removed. Hoist constants, `Set`s, and closures to module scope instead of reconstructing them per call. Prefer `for...of` over `.forEach` in hot loops.
+- **Use `structuredClone`, not `JSON.parse(JSON.stringify(...))`**, for deep cloning JSON-shaped data. Node 17+ ships it and it is significantly faster.
+- **Prefer `Set` over `Array.prototype.includes`** for membership checks that run more than a handful of times.
+- **Be careful with lodash on hot paths.** `_.get` / `_.set` re-parse the path string on every call; native `obj?.a?.b` is faster. `_.isUndefined(x)` is just `x === undefined`. Use lodash where it actually saves code, not as a default.
+
 ## Git Commit Conventions
 
 Use conventional format: `<type>(<scope>): <subject>` where type = feat|fix|docs|style|refactor|test|chore|perf. Subject: 50 chars max, imperative mood ("add" not "added"), no period. For small changes: one-line commit only. For complex changes: add body explaining what/why (72-char lines) and reference issues.
