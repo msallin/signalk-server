@@ -819,7 +819,7 @@ function tokenSecurityFactory(
       bcrypt.compare(
         password,
         hashToCompare,
-        (err: Error | null, matches: boolean) => {
+        (err: Error | null, matches?: boolean) => {
           if (err) {
             reject(err)
           } else if (matches === true && user && user.password) {
@@ -1063,11 +1063,11 @@ function tokenSecurityFactory(
       bcrypt.hash(
         user.password,
         passwordSaltRounds,
-        (err: Error | null, hash: string) => {
+        (err: Error | null, hash?: string) => {
           if (err) {
             callback(err)
           } else {
-            newUser.password = hash
+            newUser.password = hash!
             finish(newUser, undefined)
           }
         }
@@ -1099,11 +1099,11 @@ function tokenSecurityFactory(
       bcrypt.hash(
         updates.password,
         passwordSaltRounds,
-        (err: Error | null, hash: string) => {
+        (err: Error | null, hash?: string) => {
           if (err) {
             callback(err)
           } else {
-            user.password = hash
+            user.password = hash!
             callback(null, theConfig)
           }
         }
@@ -1128,13 +1128,13 @@ function tokenSecurityFactory(
     bcrypt.hash(
       password,
       passwordSaltRounds,
-      (err: Error | null, hash: string) => {
+      (err: Error | null, hash?: string) => {
         if (err) {
           callback(err)
         } else {
           const user = theConfig.users.find((u) => u.username === username)
           if (user) {
-            user.password = hash
+            user.password = hash!
           }
           options = theConfig as TokenSecurityOptions
           callback(null, theConfig)

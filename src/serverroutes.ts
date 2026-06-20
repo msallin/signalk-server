@@ -907,7 +907,7 @@ module.exports = function (
             bcrypt.compare(
               password,
               hashToCompare,
-              (err: Error | null, matches: boolean) => {
+              (err: Error | null, matches?: boolean) => {
                 if (err) {
                   console.error(err)
                   res.status(500).send('Unable to verify credentials')

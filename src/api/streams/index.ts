@@ -52,7 +52,7 @@ interface StreamApplication
  */
 interface AuthenticatedRequest extends IncomingMessage {
   skPrincipal?: StreamPrincipal
-  cookies?: Record<string, string>
+  cookies?: Record<string, string | undefined>
   query?: Record<string, string>
 }
 

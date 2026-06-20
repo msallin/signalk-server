@@ -84,7 +84,7 @@ interface SignalKSparkRequest {
   skPrincipal?: SkPrincipal
   token?: string
   source?: string
-  cookies?: Record<string, string>
+  cookies?: Record<string, string | undefined>
   headers: Record<string, string | string[] | undefined>
   query?: Record<string, string>
   socket: Socket

@@ -16,7 +16,7 @@
     "typedoc": "^0.28.0"
   },
   "devDependencies": {
-    "@types/node": "^18.19.69",
+    "@types/node": "^24.0.0",
     "typedoc": "^0.28.19"
   },
   "scripts": {
