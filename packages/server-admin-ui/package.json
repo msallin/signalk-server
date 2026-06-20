@@ -81,7 +81,6 @@
     "react-select": "^5.10.2",
     "reconnecting-websocket": "^4.4.0",
     "remark-gfm": "^4.0.1",
-    "rollup-plugin-visualizer": "^5.14.0",
     "sass": "^1.101.0",
     "simple-line-icons": "^2.5.5",
     "typescript": "^5.9.3",

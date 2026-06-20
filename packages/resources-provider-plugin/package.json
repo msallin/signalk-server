@@ -36,7 +36,6 @@
   },
   "dependencies": {
     "@signalk/server-api": "^2.5.0",
-    "geojson-validation": "^0.2.1",
     "geolib": "^3.3.14",
     "ngeohash": "^0.6.3"
   },
